@@ -45,11 +45,15 @@ uniform float uCloudsLowerBound;
 uniform float uCloudsGradient;
 uniform float uCloudSpeed;
 uniform float uCloudHardEdges;
-uniform float uCloudEdgeHardness;
+uniform float uCloudHardEdgeDensity;
+uniform float uCloudHardEdgeCut;
 // moon
 uniform float uMoonSize;
 uniform vec3 uMoonPosition;
-
+uniform float uMoonHaloSize;
+uniform float uMoonHaloGradient;
+uniform vec3 uMoonColor;
+uniform float uMoonGradient;
 
 
 varying vec2 vUv;
@@ -139,19 +143,12 @@ void mountains(inout vec3 col, vec2 pos) {
 	col = mix(col, vec3(1.), bound2);
 }
 
-void cloudStuff(inout vec3 col, vec2 pos, float dMoon, float dMoonSize, float moonDisk) {
+void cloudStuff(inout vec3 col, vec2 pos) {
 	// colors
 	vec3 cloudcolor = uCloudColor;
     // vec3 cloudcol = vec3(1.);
     // vec3 suncol1 = vec3(1.) * 1.;
     // cloudcolor = mix(cloudcol, suncol1, (1.-pos.y+0.));
-
-	// // moon related
-	// float size = dMoonSize * 0.8;
-	// float moonClouds = smoothstep(size, size * 1.25, dMoon);
-	// // again moon
-	// col = mix(col, normalize(vec3(dMoon)), moonClouds);
-
 
 	// actual clouds
 	float valY = max(vUv.y * 2. - 1., 0.);
@@ -168,59 +165,44 @@ void cloudStuff(inout vec3 col, vec2 pos, float dMoon, float dMoonSize, float mo
     cloud_val = sqrt(cloud_val3*cloud_val);
 	// cloud_val = cloud_val1;
 
-	// // again moon
-	// col = mix(col, normalize(vec3(dMoon)), moonClouds);
-
 
     // Hard(er)-edged clouds
-	float hardEdges = smoothstep(0.35 + uCloudEdgeHardness,0.5,cloud_val);
+	float hardEdges = smoothstep(uCloudHardEdgeDensity - uCloudHardEdgeCut,uCloudHardEdgeDensity,cloud_val);
 	cloud_val = mix(cloud_val, hardEdges, uCloudHardEdges);
 
 	col = mix(col, cloudcolor, cloud_val*clouds);
-	// col = mix(col, cloudcolor, moonClouds);
 }
 
-void moonStuff(inout vec3 col, inout float dMoon, inout float dMoonSize, inout float moonDisk) {
-	// z = -1, x=0, y=0 => θ=180, ϕ=90
-	// x=ρsinϕcosθ
-	// y=ρsinϕsinθ
-	// z=ρcosϕ
-	// vec3 position = 
-    vec3 posOffset = uMoonPosition;
-
-	// set target to origin or cameraPos;
+void moonStuff(inout vec3 col) {
+    vec3 pos = uMoonPosition;
     vec3 target = vec3(-0., 0., 0.);
-	// target = uCameraPos;
-    vec3 vSunDirection = normalize(posOffset - target);
-	// vSunDirection = vec3(0., 0., 1.);
-
-
-    vec3 direction = normalize(vDirection); // probably remove this one
-	direction = normalize(vWorldPosition);
+    vec3 vSunDirection = normalize(pos - target);
+	vec3 direction = normalize(vWorldPosition);
     float cosTheta = dot( direction, vSunDirection );
     float moonSize = 1. - uMoonSize;
-    float sundisk = smoothstep(moonSize, moonSize * 1.0111, cosTheta);
-    // col = mix( col, vec3(1.), sundisk - 0.);
+    float moonDisc = smoothstep(moonSize, moonSize * uMoonGradient, cosTheta);
+	vec3 moonColor = uMoonColor;
 
-	dMoon = cosTheta;
-	dMoonSize = moonSize;
-	moonDisk = sundisk;
+	// halo
+	float size = moonSize * (1. - uMoonHaloSize);
+	float moonClouds = smoothstep(size, size * uMoonHaloGradient, cosTheta);
+	vec3 haloColor = mix(uCloudColor, moonColor, 0.5);
 
-	// moon related
-	float size = dMoonSize * 0.9;
-	float moonClouds = smoothstep(size, size * 1.15, dMoon);
-	// again moon
-	col = mix(col, mix(uCloudColor, vec3(1.), 0.5), moonClouds);
-    col = mix( col, vec3(1.), sundisk - 0.);
+	// add halo
+	col = mix(col, haloColor, moonClouds);
+
+	// add disc
+    col = mix( col, moonColor, moonDisc);
+
+	// // disc border
+	// float borderSize = size * uMoonHaloGradient * 0.99;
+	// // float border = smoothstep(borderSize, borderSize * uMoonGradient, cosTheta) - moonDisc;
+	// float border = step(borderSize, cosTheta) - moonDisc;
+	// col += vec3(1.) * border;
+	// // col = mix( col, vec3(1.), border);
 }
 
 void main() {
-
-    // float jacked_time = 5.5*uTime;
-    // const vec2 scaleHeat = vec2(.5);
-    // vec2 nXY = vec2(x, y) + 0.11*sin(scaleHeat*jacked_time + length( vec2(x, y) )*10.0);
-
-
 	vec3 col = vec3(0.);
 
 	vec2 p = vWorldPosition.xy; // range -1 to 1
@@ -228,20 +210,17 @@ void main() {
 	// sky
 	skyStuff(col);
 
+    // moon
+	moonStuff(col);
+
 	// horizon
 	horizonStuff(col, p);
-
-    // moon
-	float dMoon;
-	float dMoonSize;
-	float moonDisk;
-	moonStuff(col, dMoon, dMoonSize, moonDisk);
 
   	//mountains
     mountains(col, p);
 
     // clouds
-	cloudStuff(col, p, dMoon, dMoonSize, moonDisk);
+	cloudStuff(col, p);
 
 
 	// // postprocess
@@ -249,19 +228,4 @@ void main() {
     col *= clamp(1.0-0.3*length(p), 0.0, 1.0 );
 
 	gl_FragColor = vec4(col ,1.);
-
-
-
-
-    // gl_FragColor = vec4(snoise(vWorldPosition));
-	// gl_FragColor += 0.2;
-
-	// cos(α) = a · b / (|a| * |b|)
-	// vec2 a = normalize(vWorldPosition.xz);
-	// vec2 b = vec2(0., 1.);
-	// float cosAngle = dot(a,b);
-
-	// float v = vUv.y;
-	// gl_FragColor = vec4(v, 0., 0., 1.);
-
 }

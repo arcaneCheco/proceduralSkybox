@@ -2,11 +2,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { Pane } from "tweakpane";
 import fragmentShader from "./fragment.glsl";
-// import fragmentShader from "./fragmentRayMarchStarter.glsl";
 import vertexShader from "./vertex.glsl";
 
 class World {
   constructor() {
+    this.splitScreen = false;
     this.time = 0;
     this.container = document.querySelector("#canvas");
     this.width = this.container.offsetWidth;
@@ -47,8 +47,8 @@ class World {
     });
     horizon.addInput(this.uniforms.uHorizonIntensity, "value", {
       min: 1,
-      max: 100,
-      step: 0.1,
+      max: 10,
+      step: 0.001,
       label: "horizonIntensity",
     });
     horizon.addInput(this.uniforms.uHorizonHeight, "value", {
@@ -122,7 +122,8 @@ class World {
       step: 0.001,
       label: "speed",
     });
-    clouds
+    const edges = clouds.addFolder({ title: "harder edges" });
+    edges
       .addButton({ title: "hard edges" })
       .on(
         "click",
@@ -130,11 +131,17 @@ class World {
           (this.uniforms.uCloudHardEdges.value =
             !this.uniforms.uCloudHardEdges.value)
       );
-    clouds.addInput(this.uniforms.uCloudEdgeHardness, "value", {
+    edges.addInput(this.uniforms.uCloudHardEdgeDensity, "value", {
       min: 0,
-      max: 0.13,
-      step: 0.001,
-      label: "edhe hardness",
+      max: 1,
+      step: 0.0001,
+      label: "density",
+    });
+    edges.addInput(this.uniforms.uCloudHardEdgeCut, "value", {
+      min: 0,
+      max: 1,
+      step: 0.0001,
+      label: "cut",
     });
   }
 
@@ -161,6 +168,32 @@ class World {
       min: -5,
       max: 5,
       step: 0.01,
+    });
+    moon.addInput(this.uniforms.uMoonHaloSize, "value", {
+      min: 0,
+      max: 0.35,
+      step: 0.0001,
+      label: "halo size",
+    });
+    moon.addInput(this.uniforms.uMoonHaloGradient, "value", {
+      min: 1,
+      max: 2.5,
+      step: 0.0001,
+      label: "halo gradient",
+    });
+    moon
+      .addInput(this.uniforms.uMoonColor, "value", {
+        view: "color",
+        label: "color",
+      })
+      .on("change", () =>
+        this.uniforms.uMoonColor.value.multiplyScalar(1 / 255)
+      );
+    moon.addInput(this.uniforms.uMoonGradient, "value", {
+      min: 1,
+      max: 1.1,
+      step: 0.0001,
+      label: "disc gradient",
     });
   }
 
@@ -202,7 +235,6 @@ class World {
       fragmentShader,
       uniforms: {
         uTime: { value: 0 },
-        uAspect: { value: this.width / this.height },
         uGreyNoise: { value: this.textureLoader.load("greyNoise.png") },
         uMatcap: { value: this.matcap },
         uTestMap: { value: this.textureLoader.load("StandardCubeMap.png") },
@@ -220,18 +252,21 @@ class World {
         uMountain2Height: { value: 0.2 },
         uMountain2Color: { value: new THREE.Color("#010101") },
         // clouds
-        // uCloudColor: { value: new THREE.Color("#010101") },
         uCloudColor: { value: new THREE.Color("#010101") },
         uCloudsLowerBound: { value: 0 },
         uCloudsGradient: { value: 0.8 },
         uCloudSpeed: { value: 3 },
         uCloudHardEdges: { value: true },
-        uCloudEdgeHardness: { value: 0.13 },
+        uCloudHardEdgeDensity: { value: 0.6 },
+        uCloudHardEdgeCut: { value: 0.3 },
         // moon
         uMoonSize: { value: 0.026 },
         uMoonPosition: { value: new THREE.Vector3(1, 1.74, -0.9) },
+        uMoonHaloSize: { value: 0.3 },
+        uMoonHaloGradient: { value: 1.9 },
+        uMoonColor: { value: new THREE.Color("#ffffff") },
+        uMoonGradient: { value: 1.0111 },
       },
-      // transparent: true,
       side: THREE.BackSide,
       depthWrite: false,
     });
@@ -257,12 +292,10 @@ class World {
     this.width = this.container.offsetWidth;
     this.height = this.container.offsetHeight;
     this.renderer.setSize(this.width, this.height);
-    this.camera.aspect = (0.5 * this.width) / this.height;
-    // this.camera.aspect = this.width / this.height;
+    this.camera.aspect = this.width / this.height;
+    this.splitScreen && (this.camera.aspect *= 0.5);
 
     this.camera.updateProjectionMatrix();
-
-    this.material.uniforms.uAspect.value = this.width / this.height;
   }
 
   update() {
@@ -276,19 +309,21 @@ class World {
     this.update();
 
     this.renderer.clear();
-    this.renderer.setViewport(0, 0, 0.5 * this.width, this.height);
+    this.splitScreen &&
+      this.renderer.setViewport(0, 0, 0.5 * this.width, this.height);
     this.renderer.render(this.sceneLeft, this.camera);
 
-    this.renderer.clearDepth();
-    this.renderer.setViewport(
-      0.5 * this.width,
-      0,
-      0.5 * this.width,
-      this.height
-    );
-    this.renderer.render(this.sceneRight, this.camera);
+    if (this.splitScreen) {
+      this.renderer.clearDepth();
+      this.renderer.setViewport(
+        0.5 * this.width,
+        0,
+        0.5 * this.width,
+        this.height
+      );
+      this.renderer.render(this.sceneRight, this.camera);
+    }
 
-    // this.renderer.render(this.sceneRight, this.camera);
     window.requestAnimationFrame(this.render.bind(this));
   }
 }
