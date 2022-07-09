@@ -101,7 +101,7 @@ float mapProjX(vec2 uv) {
 }
 
 // #pragma glslify: snoise = require(./partials/simplex3d.glsl)
-#pragma glslify: value_noise = require(./partials/valueNoise.glsl)
+#pragma glslify: value_noise = require(../partials/valueNoise.glsl)
 
 
 void skyStuff(inout vec3 col) {
@@ -180,8 +180,20 @@ void moonStuff(inout vec3 col) {
 	vec3 direction = normalize(vWorldPosition);
     float cosTheta = dot( direction, vSunDirection );
     float moonSize = 1. - uMoonSize;
-    float moonDisc = smoothstep(moonSize, moonSize * uMoonGradient, cosTheta);
+
+	float uGradient = uMoonGradient;
+	// // post only
+	// uGradient = 1.;
+	// ////////
+
+    float moonDisc = smoothstep(moonSize, moonSize * uGradient, cosTheta);
 	vec3 moonColor = uMoonColor;
+
+	// // post only
+	// float s = 0.001;
+	// float moonDisc2 = smoothstep(moonSize + s, moonSize + s, cosTheta);
+	// moonDisc -= moonDisc2;
+	// ////////
 
 	// halo
 	float size = moonSize * (1. - uMoonHaloSize);
@@ -189,17 +201,10 @@ void moonStuff(inout vec3 col) {
 	vec3 haloColor = mix(uCloudColor, moonColor, 0.5);
 
 	// add halo
-	col = mix(col, haloColor, moonClouds);
+	// col = mix(col, haloColor, moonClouds);
 
 	// add disc
     col = mix( col, moonColor, moonDisc);
-
-	// // disc border
-	// float borderSize = size * uMoonHaloGradient * 0.99;
-	// // float border = smoothstep(borderSize, borderSize * uMoonGradient, cosTheta) - moonDisc;
-	// float border = step(borderSize, cosTheta) - moonDisc;
-	// col += vec3(1.) * border;
-	// // col = mix( col, vec3(1.), border);
 }
 
 void main() {
@@ -216,7 +221,7 @@ void main() {
 	// horizon
 	horizonStuff(col, p);
 
-  	//mountains
+  	// mountains
     mountains(col, p);
 
     // clouds

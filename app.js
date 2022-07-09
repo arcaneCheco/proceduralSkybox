@@ -1,12 +1,15 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { Pane } from "tweakpane";
-import fragmentShader from "./fragment.glsl";
-import vertexShader from "./vertex.glsl";
+import fragmentShader from "./shaders/sky/fragment.glsl";
+import vertexShader from "./shaders/sky/vertex.glsl";
+import fragmentPost from "./shaders/post/fragment.glsl";
+import vertexPost from "./shaders/post/vertex.glsl";
 
 class World {
   constructor() {
     this.splitScreen = false;
+    this.post = false;
     this.time = 0;
     this.container = document.querySelector("#canvas");
     this.width = this.container.offsetWidth;
@@ -16,6 +19,7 @@ class World {
     this.addObject();
     this.resize();
     this.setDebug();
+    this.post && this.setPost();
     this.render();
   }
 
@@ -215,7 +219,7 @@ class World {
     this.renderer = new THREE.WebGLRenderer({ alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(0x555555);
-    this.renderer.autoClear = false;
+    this.renderer.autoClear = !this.splitScreen;
     // this.renderer.outputEncoding = THREE.sRGBEncoding;
     this.container.appendChild(this.renderer.domElement);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -261,6 +265,7 @@ class World {
         uCloudHardEdgeCut: { value: 0.3 },
         // moon
         uMoonSize: { value: 0.026 },
+        // uMoonPosition: { value: new THREE.Vector3(0, 0, -1) },
         uMoonPosition: { value: new THREE.Vector3(1, 1.74, -0.9) },
         uMoonHaloSize: { value: 0.3 },
         uMoonHaloGradient: { value: 1.9 },
@@ -277,7 +282,7 @@ class World {
     const groundM = new THREE.MeshBasicMaterial({ color: "green" });
     const ground = new THREE.Mesh(groundG, groundM);
     ground.rotation.x = -Math.PI / 2;
-    this.sceneLeft.add(ground);
+    // this.sceneLeft.add(ground);
 
     const plane = new THREE.PlaneGeometry(1, 1);
     let m = new THREE.MeshNormalMaterial();
@@ -286,6 +291,27 @@ class World {
     this.plane = new THREE.Mesh(plane, this.material);
 
     this.sceneRight.add(this.plane);
+  }
+
+  setPost() {
+    this.rt = new THREE.WebGLRenderTarget(this.width, this.height, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+    });
+    this.materialPost = new THREE.ShaderMaterial({
+      vertexShader: vertexPost,
+      fragmentShader: fragmentPost,
+      uniforms: {
+        uMap: { value: this.rt.texture },
+      },
+    });
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(2, 2),
+      this.materialPost
+    );
+    this.postScene = new THREE.Scene();
+    this.postScene.add(mesh);
   }
 
   resize() {
@@ -304,24 +330,34 @@ class World {
     // this.plane.material.uniforms.uTime.value = this.time;
   }
 
+  renderSplitScreen() {
+    this.renderer.clear();
+    this.renderer.setViewport(0, 0, 0.5 * this.width, this.height);
+    this.renderer.render(this.sceneLeft, this.camera);
+
+    this.renderer.clearDepth();
+    this.renderer.setViewport(
+      0.5 * this.width,
+      0,
+      0.5 * this.width,
+      this.height
+    );
+    this.renderer.render(this.sceneRight, this.camera);
+  }
+
   render() {
     this.time += 0.01633;
     this.update();
 
-    this.renderer.clear();
-    this.splitScreen &&
-      this.renderer.setViewport(0, 0, 0.5 * this.width, this.height);
-    this.renderer.render(this.sceneLeft, this.camera);
-
     if (this.splitScreen) {
-      this.renderer.clearDepth();
-      this.renderer.setViewport(
-        0.5 * this.width,
-        0,
-        0.5 * this.width,
-        this.height
-      );
-      this.renderer.render(this.sceneRight, this.camera);
+      this.renderSplitScreen();
+    } else if (this.post) {
+      this.renderer.setRenderTarget(this.rt);
+      this.renderer.render(this.sceneLeft, this.camera);
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.postScene, this.camera);
+    } else {
+      this.renderer.render(this.sceneLeft, this.camera);
     }
 
     window.requestAnimationFrame(this.render.bind(this));
